@@ -13,11 +13,11 @@ import shutil
 import tempfile
 import xml.parsers.expat as expat
 import zipfile
+import zlib
 from base64 import b64decode
 from collections import OrderedDict
 from csv import DictWriter
 from datetime import datetime
-from gzip import GzipFile
 from io import BytesIO, StringIO
 from typing import Callable
 
@@ -119,7 +119,7 @@ def _parse_report_record(record, ip_db_path=None, offline=False,
     new_record["alignment"]["dkim"] = dkim_aligned
     new_record["alignment"]["dmarc"] = dmarc_aligned
     if "reason" in policy_evaluated:
-        if type(policy_evaluated["reason"]) is list:
+        if isinstance(policy_evaluated["reason"], list):
             reasons = policy_evaluated["reason"]
         else:
             reasons = [policy_evaluated["reason"]]
@@ -130,7 +130,7 @@ def _parse_report_record(record, ip_db_path=None, offline=False,
     new_record["policy_evaluated"] = new_policy_evaluated
     new_record["identifiers"] = record["identifiers"].copy()
     new_record["auth_results"] = OrderedDict([("dkim", []), ("spf", [])])
-    if type(new_record["identifiers"]["header_from"]) is str:
+    if isinstance(new_record["identifiers"]["header_from"], str):
         lowered_from = new_record["identifiers"]["header_from"].lower()
     else:
         lowered_from = ''
@@ -320,7 +320,7 @@ def parse_aggregate_report_xml(xml, ip_db_path=None, offline=False,
         new_policy_published["fo"] = fo
         new_report["policy_published"] = new_policy_published
 
-        if type(report["record"]) is list:
+        if isinstance(report["record"], list):
             for i in range(len(report["record"])):
                 if keep_alive is not None and i > 0 and i % 20 == 0:
                     logger.debug("Sending keepalive cmd")
@@ -376,9 +376,9 @@ def extract_xml(input_):
 
     """
     try:
-        if type(input_) is str:
+        if isinstance(input_, str):
             file_object = open(input_, "rb")
-        elif type(input_) is bytes:
+        elif isinstance(input_, bytes):
             file_object = BytesIO(input_)
         else:
             file_object = input_
@@ -389,7 +389,8 @@ def extract_xml(input_):
             _zip = zipfile.ZipFile(file_object)
             xml = _zip.open(_zip.namelist()[0]).read().decode(errors='ignore')
         elif header.startswith(MAGIC_GZIP):
-            xml = GzipFile(fileobj=file_object).read().decode(errors='ignore')
+            xml = zlib.decompress(file_object.getvalue(), zlib.MAX_WBITS | 16)\
+                .decode(errors='ignore')
         elif header.startswith(MAGIC_XML):
             xml = file_object.read().decode(errors='ignore')
         else:
@@ -460,7 +461,7 @@ def parsed_aggregate_reports_to_csv_rows(reports):
     def to_str(obj):
         return str(obj).lower()
 
-    if type(reports) is OrderedDict:
+    if isinstance(reports, OrderedDict):
         reports = [reports]
 
     rows = []
@@ -541,7 +542,7 @@ def parsed_aggregate_reports_to_csv_rows(reports):
 
     for r in rows:
         for k, v in r.items():
-            if type(v) not in [str, int, bool]:
+            if not isinstance(v, (str, int, bool)):
                 r[k] = ''
 
     return rows
@@ -716,7 +717,7 @@ def parsed_forensic_reports_to_csv_rows(reports):
     Returns:
         list: Parsed forensic report data as a list of dicts in flat CSV format
     """
-    if type(reports) is OrderedDict:
+    if isinstance(reports, OrderedDict):
         reports = [reports]
 
     rows = []
@@ -802,7 +803,7 @@ def parse_report_email(input_, offline=False, ip_db_path=None,
     try:
         if is_outlook_msg(input_):
             input_ = convert_outlook_msg(input_)
-        if type(input_) is bytes:
+        if isinstance(input_, bytes):
             input_ = input_.decode(encoding="utf8", errors="replace")
         msg = mailparser.parse_from_string(input_)
         msg_headers = json.loads(msg.headers_json)
@@ -942,10 +943,10 @@ def parse_report_file(input_, nameservers=None, dns_timeout=2.0,
     Returns:
         OrderedDict: The parsed DMARC report
     """
-    if type(input_) is str:
+    if isinstance(input_, str):
         logger.debug("Parsing {0}".format(input_))
         file_object = open(input_, "rb")
-    elif type(input_) is bytes:
+    elif isinstance(input_, bytes):
         file_object = BytesIO(input_)
     else:
         file_object = input_
